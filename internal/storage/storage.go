@@ -2,7 +2,6 @@ package storage
 
 import (
     "encoding/json"
-    "io/ioutil"
     "os"
     "sync"
 )
@@ -13,10 +12,12 @@ type Storage struct {
 }
 
 func NewStorage(filename string) (*Storage, error) {
-    data, err := ioutil.ReadFile(filename)
+    data, err := os.ReadFile(filename)
     if err != nil {
         if os.IsNotExist(err) {
-            return &Storage{links: make(map[string]string)}, nil
+            return &Storage{
+                links: make(map[string]string),
+            }, nil
         }
         return nil, err
     }
@@ -32,17 +33,19 @@ func NewStorage(filename string) (*Storage, error) {
     }, nil
 }
 
-func (s *Storage) AddShortURL(shortID, originalURL string) {
-    s.mutex.Lock()
-    defer s.mutex.Unlock()
-    s.links[shortID] = originalURL
-}
-
 func (s *Storage) GetOriginalURL(shortID string) (string, bool) {
     s.mutex.RLock()
     defer s.mutex.RUnlock()
+
     url, exists := s.links[shortID]
     return url, exists
+}
+
+func (s *Storage) AddShortURL(shortID, originalURL string) {
+    s.mutex.Lock()
+    defer s.mutex.Unlock()
+
+    s.links[shortID] = originalURL
 }
 
 func (s *Storage) SaveToFile(filename string) error {
@@ -54,5 +57,5 @@ func (s *Storage) SaveToFile(filename string) error {
         return err
     }
 
-    return ioutil.WriteFile(filename, data, 0644)
+    return os.WriteFile(filename, data, 0644)
 }
