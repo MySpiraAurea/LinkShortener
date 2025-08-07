@@ -9,6 +9,7 @@ import (
     "link-shortener/internal/controller"
     "link-shortener/internal/handlers"
     "link-shortener/internal/storage"
+    "link-shortener/internal/repository/postgres"
 )
 
 func main() {
