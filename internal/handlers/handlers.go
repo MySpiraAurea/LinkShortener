@@ -21,20 +21,17 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
     logger := slog.With("method", r.Method, "path", r.URL.Path)
     logger.InfoContext(ctx, "Начало обработки запроса")
 
-    // Проверка метода
     if r.Method != http.MethodPost {
         http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
         return
     }
 
-    // Проверка Content-Type
     contentType := r.Header.Get("Content-Type")
     if contentType != "application/json" {
         http.Error(w, "Требуется Content-Type: application/json", http.StatusUnsupportedMediaType)
         return
     }
 
-    // Декодирование JSON
     var req struct {
         URL string `json:"url"`
     }
@@ -45,21 +42,18 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Проверка, что URL не пустой
     if req.URL == "" {
         http.Error(w, "URL не может быть пустым", http.StatusBadRequest)
         logger.WarnContext(ctx, "URL отсутствует")
         return
     }
 
-    // Валидация URL
     if _, err := url.ParseRequestURI(req.URL); err != nil {
         http.Error(w, "Некорректный URL", http.StatusBadRequest)
         logger.WarnContext(ctx, "Некорректный URL", "url", req.URL)
         return
     }
 
-    // Вызов контроллера
     shortURL, err := h.controller.CreateShortLink(ctx, req.URL)
     if err != nil {
         http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
@@ -67,7 +61,6 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Формирование ответа
     response := map[string]string{"result": shortURL}
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
@@ -79,7 +72,7 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
     logger := slog.With("method", "GET", "path", r.URL.Path)
     logger.InfoContext(ctx, "Начало обработки запроса")
 
-    shortID := r.URL.Path[1:] // Убираем первый символ "/"
+    shortID := r.URL.Path[1:]
     originalURL, err := h.controller.GetOriginalLink(ctx, shortID)
 
     if err != nil {
@@ -90,4 +83,19 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
     http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
     slog.Info("Редирект выполнен", "short_id", shortID, "url", originalURL)
+}
+
+func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
+    ctx := r.Context()
+    logger := slog.With("method", r.Method, "path", r.URL.Path)
+    logger.InfoContext(ctx, "Проверка подключения к хранилищу")
+
+    if err := h.controller.Ping(ctx); err != nil {
+        logger.ErrorContext(ctx, "Проверка не пройдена", "error", err)
+        http.Error(w, "DB not available", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte("OK"))
 }

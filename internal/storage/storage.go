@@ -6,17 +6,25 @@ import (
     "sync"
 )
 
-type Storage struct {
-    mutex sync.RWMutex
-    links map[string]string
+type LinkRepository interface {
+    GetOriginalURL(shortID string) (string, bool)
+    AddShortURL(shortID, originalURL string)
+    SaveToFile() error
+    Ping() error
 }
 
+type Storage struct {
+    mutex    sync.RWMutex
+    links    map[string]string
+    filename string
+}
 func NewStorage(filename string) (*Storage, error) {
     data, err := os.ReadFile(filename)
     if err != nil {
         if os.IsNotExist(err) {
             return &Storage{
-                links: make(map[string]string),
+                links:    make(map[string]string),
+                filename: filename,
             }, nil
         }
         return nil, err
@@ -28,8 +36,9 @@ func NewStorage(filename string) (*Storage, error) {
     }
 
     return &Storage{
-        mutex: sync.RWMutex{},
-        links: links,
+        mutex:    sync.RWMutex{},
+        links:    links,
+        filename: filename,
     }, nil
 }
 
@@ -48,7 +57,7 @@ func (s *Storage) AddShortURL(shortID, originalURL string) {
     s.links[shortID] = originalURL
 }
 
-func (s *Storage) SaveToFile(filename string) error {
+func (s *Storage) SaveToFile() error {
     s.mutex.Lock()
     defer s.mutex.Unlock()
 
@@ -57,5 +66,15 @@ func (s *Storage) SaveToFile(filename string) error {
         return err
     }
 
-    return os.WriteFile(filename, data, 0644)
+    return os.WriteFile(s.filename, data, 0644)
+}
+
+func NewInMemory() *Storage {
+    return &Storage{
+        links: make(map[string]string),
+    }
+}
+
+func (s *Storage) Ping() error {
+    return nil
 }

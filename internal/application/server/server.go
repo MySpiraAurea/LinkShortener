@@ -8,31 +8,31 @@ import (
     "os/signal"
     "syscall"
     "time"
+
     "link-shortener/internal/handlers"
+    "link-shortener/internal/middleware"
 )
 
 type Server struct {
     server *http.Server
-    handler *handlers.Handler
 }
 
 func New(handler *handlers.Handler, port string) *Server {
     mux := http.NewServeMux()
 
-    // Регистрация маршрутов через handlers
     handlers.RegisterRoutes(mux, handler)
+
+    stack := middleware.Logging(mux)
 
     return &Server{
         server: &http.Server{
             Addr:    ":" + port,
-            Handler: mux,
+            Handler: stack,
         },
-        handler: handler,
     }
 }
 
 func (s *Server) Run() error {
-    // Graceful shutdown
     go func() {
         sigChan := make(chan os.Signal, 1)
         signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -12,13 +12,11 @@ import (
 )
 
 type LinkController struct {
-    storage *storage.Storage
+    storage storage.LinkRepository
 }
 
-func NewLinkController(store *storage.Storage) *LinkController {
-    return &LinkController{
-        storage: store,
-    }
+func NewLinkController(store storage.LinkRepository) *LinkController {
+    return &LinkController{storage: store}
 }
 
 func (lc *LinkController) CreateShortLink(ctx context.Context, originalURL string) (string, error) {
@@ -28,6 +26,12 @@ func (lc *LinkController) CreateShortLink(ctx context.Context, originalURL strin
 
     shortID := generateShortID()
     lc.storage.AddShortURL(shortID, originalURL)
+
+    if fileStore, ok := lc.storage.(interface{ SaveToFile() error }); ok {
+        if err := fileStore.SaveToFile(); err != nil {
+            return "", fmt.Errorf("ошибка сохранения в файл: %w", err)
+        }
+    }
 
     return fmt.Sprintf("http://localhost:8080/%s", shortID), nil
 }
@@ -49,4 +53,8 @@ func generateShortID() string {
         id[i] = charset[num.Int64()]
     }
     return string(id)
+}
+
+func (lc *LinkController) Ping(ctx context.Context) error {
+    return lc.storage.Ping()
 }

@@ -3,7 +3,7 @@ package main
 import (
     "log/slog"
     "os"
-
+    
     "link-shortener/internal/application/server"
     "link-shortener/internal/config"
     "link-shortener/internal/controller"
