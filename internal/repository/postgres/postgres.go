@@ -31,15 +31,13 @@ func New(dsn string) (*PostgresRepository, error) {
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
-
-	// Запуск миграций
+й
 	m, err := migrate.New("file://migrations", dsn)
 	if err != nil {
 		return nil, err
 	}
 	defer m.Close()
 
-	// Применить все миграции
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return nil, err
 	}

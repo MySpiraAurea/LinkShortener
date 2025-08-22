@@ -26,20 +26,17 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	logger := slog.With("method", r.Method, "path", r.URL.Path)
 	logger.InfoContext(ctx, "Начало обработки запроса")
 
-	// Проверка метода
 	if r.Method != http.MethodPost {
 		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Проверка Content-Type
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
 		http.Error(w, "Требуется Content-Type: application/json", http.StatusUnsupportedMediaType)
 		return
 	}
 
-	// Декодирование JSON
 	var req struct {
 		URL string `json:"url"`
 	}
@@ -50,21 +47,18 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверка, что URL не пустой
 	if req.URL == "" {
 		http.Error(w, "URL не может быть пустым", http.StatusBadRequest)
 		logger.WarnContext(ctx, "URL отсутствует")
 		return
 	}
 
-	// Валидация URL
 	if _, err := url.ParseRequestURI(req.URL); err != nil {
 		http.Error(w, "Некорректный URL", http.StatusBadRequest)
 		logger.WarnContext(ctx, "Некорректный URL", "url", req.URL)
 		return
 	}
 
-	// Вызов контроллера
 	shortID, err := h.controller.CreateShortLink(ctx, req.URL)
 	if err != nil {
 		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
@@ -72,13 +66,11 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Формирование полного URL
 	shortURL := fmt.Sprintf("%s/%s", h.baseURL, shortID)
 
-	// Формирование ответа
 	response := map[string]string{"result": shortURL}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated) // 201 Created
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(response)
 	logger.InfoContext(ctx, "Ссылка создана", "short_id", shortID, "original_url", req.URL)
 }
@@ -90,7 +82,6 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 
 	shortID := r.URL.Path[1:]
 
-	// Валидация shortID
 	if !isValidShortID(shortID) {
 		http.Error(w, "Некорректный ID", http.StatusBadRequest)
 		logger.Warn("Некорректный формат shortID", "short_id", shortID)
@@ -108,7 +99,6 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Редирект выполнен", "short_id", shortID, "url", originalURL)
 }
 
-// isValidShortID проверяет, что ID состоит из 6 букв/цифр
 func isValidShortID(id string) bool {
 	if len(id) != 6 {
 		return false
