@@ -8,9 +8,12 @@ import (
 
 type LinkRepository interface {
     GetOriginalURL(shortID string) (string, bool)
-    AddShortURL(shortID, originalURL string)
-    SaveToFile() error
+    AddShortURL(shortID, originalURL string) error
     Ping() error
+}
+
+type FileSaver interface {
+    SaveToFile() error
 }
 
 type Storage struct {
@@ -50,11 +53,11 @@ func (s *Storage) GetOriginalURL(shortID string) (string, bool) {
     return url, exists
 }
 
-func (s *Storage) AddShortURL(shortID, originalURL string) {
+func (s *Storage) AddShortURL(shortID, originalURL string) error {
     s.mutex.Lock()
     defer s.mutex.Unlock()
-
     s.links[shortID] = originalURL
+    return nil
 }
 
 func (s *Storage) SaveToFile() error {
@@ -69,12 +72,35 @@ func (s *Storage) SaveToFile() error {
     return os.WriteFile(s.filename, data, 0644)
 }
 
-func NewInMemory() *Storage {
-    return &Storage{
+func (s *Storage) Ping() error {
+    return nil
+}
+
+type InMemoryStorage struct {
+    mutex sync.RWMutex
+    links map[string]string
+}
+
+func NewInMemory() *InMemoryStorage {
+    return &InMemoryStorage{
         links: make(map[string]string),
     }
 }
 
-func (s *Storage) Ping() error {
+func (s *InMemoryStorage) GetOriginalURL(shortID string) (string, bool) {
+    s.mutex.RLock()
+    defer s.mutex.RUnlock()
+    url, exists := s.links[shortID]
+    return url, exists
+}
+
+func (s *InMemoryStorage) AddShortURL(shortID, originalURL string) error {
+    s.mutex.Lock()
+    defer s.mutex.Unlock()
+    s.links[shortID] = originalURL
+    return nil
+}
+
+func (s *InMemoryStorage) Ping() error {
     return nil
 }

@@ -41,7 +41,7 @@ func main() {
     }
 
     linkController := controller.NewLinkController(repo)
-    handler := handlers.NewHandler(linkController)
+    handler := handlers.NewHandler(linkController, cfg.BaseURL)
 
     appServer := server.New(handler, cfg.Port)
     if err := appServer.Run(); err != nil {

@@ -1,11 +1,13 @@
 package postgres
 
 import (
+	"database/sql"
+	"time"
     "context"
-    "database/sql"
 
-    _ "github.com/jackc/pgx/v5/stdlib"
-    "link-shortener/internal/storage"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 const createTableQuery = `
@@ -21,39 +23,51 @@ type PostgresRepository struct {
 }
 
 func New(dsn string) (*PostgresRepository, error) {
-    db, err := sql.Open("pgx", dsn)
-    if err != nil {
-        return nil, err
-    }
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, err
+	}
 
-    if err := db.Ping(); err != nil {
-        return nil, err
-    }
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
 
-    if _, err := db.Exec(createTableQuery); err != nil {
-        return nil, err
-    }
+	// Запуск миграций
+	m, err := migrate.New("file://migrations", dsn)
+	if err != nil {
+		return nil, err
+	}
+	defer m.Close()
 
-    return &PostgresRepository{db: db}, nil
+	// Применить все миграции
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return nil, err
+	}
+
+	return &PostgresRepository{db: db}, nil
 }
 
 func (p *PostgresRepository) GetOriginalURL(shortID string) (string, bool) {
-    var url string
-    err := p.db.QueryRow("SELECT original_url FROM links WHERE short_id = $1", shortID).Scan(&url)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return "", false
-        }
-        return "", false
-    }
-    return url, true
+	var url string
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := p.db.QueryRowContext(ctx, "SELECT original_url FROM links WHERE short_id = $1", shortID).Scan(&url)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", false
+		}
+		return "", false
+	}
+	return url, true
 }
 
-func (p *PostgresRepository) AddShortURL(shortID, originalURL string) {
-    _, _ = p.db.Exec(
+func (p *PostgresRepository) AddShortURL(shortID, originalURL string) error {
+    _, err := p.db.Exec(
         "INSERT INTO links (short_id, original_url) VALUES ($1, $2) ON CONFLICT (short_id) DO UPDATE SET original_url = $2",
         shortID, originalURL,
     )
+    return err
 }
 
 func (p *PostgresRepository) Ping() error {

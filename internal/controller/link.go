@@ -1,39 +1,83 @@
 package controller
 
 import (
-    "context"
-    "errors"
-    "fmt"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
-    "link-shortener/internal/storage"
-
-    "crypto/rand"
-    "math/big"
+	"link-shortener/internal/storage"
+	"link-shortener/internal/utils"
+	"log/slog"
 )
 
 type LinkController struct {
-    storage storage.LinkRepository
+	storage storage.LinkRepository
 }
 
 func NewLinkController(store storage.LinkRepository) *LinkController {
-    return &LinkController{storage: store}
+	return &LinkController{storage: store}
 }
 
 func (lc *LinkController) CreateShortLink(ctx context.Context, originalURL string) (string, error) {
-    if originalURL == "" {
-        return "", errors.New("original URL не может быть пустым")
-    }
+	if originalURL == "" {
+		return "", errors.New("original URL не может быть пустым")
+	}
 
-    shortID := generateShortID()
-    lc.storage.AddShortURL(shortID, originalURL)
+	var shortID string
+	var err error
 
-    if fileStore, ok := lc.storage.(interface{ SaveToFile() error }); ok {
-        if err := fileStore.SaveToFile(); err != nil {
-            return "", fmt.Errorf("ошибка сохранения в файл: %w", err)
-        }
-    }
+	// Ретрай до 5 раз
+	for i := 0; i < 5; i++ {
+		shortID = utils.GenerateShortID()
+		slog.Debug("Генерация короткого ID", "попытка", i+1, "id", shortID)
 
-    return fmt.Sprintf("http://localhost:8080/%s", shortID), nil
+		// Проверяем, существует ли уже такой ID
+		_, exists := lc.storage.GetOriginalURL(shortID)
+		if exists {
+			slog.Debug("ID уже существует, пробуем снова", "id", shortID)
+			continue
+		}
+
+		// Пытаемся сохранить
+		if err = lc.storage.AddShortURL(shortID, originalURL); err == nil {
+			slog.Info("Ссылка успешно создана", "short_id", shortID, "url", originalURL)
+			break
+		}
+
+		// Если ошибка не связана с коллизией — выходим
+		if !isConflictError(err) {
+			return "", fmt.Errorf("ошибка сохранения ссылки: %w", err)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("не удалось создать уникальный ID за 5 попыток: %w", err)
+	}
+
+	// Сохраняем в файл, если хранилище поддерживает
+	if saver, ok := lc.storage.(storage.FileSaver); ok {
+		if saveErr := saver.SaveToFile(); saveErr != nil {
+			return "", fmt.Errorf("ошибка сохранения в файл: %w", saveErr)
+		}
+	}
+
+	return shortID, nil
+}
+
+func (lc *LinkController) Ping(ctx context.Context) error {
+	return lc.storage.Ping()
+}
+
+// isConflictError проверяет, является ли ошибка конфликтом (например, дубликат)
+func isConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "duplicate key")
 }
 
 func (lc *LinkController) GetOriginalLink(ctx context.Context, shortID string) (string, error) {
@@ -42,19 +86,4 @@ func (lc *LinkController) GetOriginalLink(ctx context.Context, shortID string) (
         return "", errors.New("ссылка не найдена")
     }
     return url, nil
-}
-
-func generateShortID() string {
-    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    const length = 6
-    id := make([]byte, length)
-    for i := range id {
-        num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-        id[i] = charset[num.Int64()]
-    }
-    return string(id)
-}
-
-func (lc *LinkController) Ping(ctx context.Context) error {
-    return lc.storage.Ping()
 }
